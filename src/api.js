@@ -59,6 +59,36 @@ export async function closeSession(sessionId) {
   return res.json();
 }
 
+// ============ Host Management API ============
+
+export async function updateDeliveryFee(sessionId, deliveryFee) {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/delivery-fee`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deliveryFee })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
+export async function deleteParticipantOrder(sessionId, participantName) {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
+export async function editParticipantOrder(sessionId, participantName, items) {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
 // ============ Restaurant API ============
 
 export async function listRestaurants() {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { getSession, closeSession as apiCloseSession, submitOrder } from '../api';
+import { getSession, closeSession as apiCloseSession, submitOrder, updateDeliveryFee, deleteParticipantOrder, editParticipantOrder } from '../api';
 import { useSocket } from '../useSocket';
 import LoadingOverlay from '../components/LoadingOverlay';
 
@@ -14,6 +14,12 @@ export default function HostPage() {
   const [myItems, setMyItems] = useState([{ name: '', price: '', quantity: 1 }]);
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [hostMenuSearch, setHostMenuSearch] = useState('');
+  // Delivery fee editing
+  const [editingDeliveryFee, setEditingDeliveryFee] = useState(false);
+  const [newDeliveryFee, setNewDeliveryFee] = useState('');
+  // Participant order editing
+  const [editingOrderName, setEditingOrderName] = useState(null);
+  const [editingItems, setEditingItems] = useState([]);
 
   const loadSession = useCallback(async () => {
     try {
@@ -128,6 +134,68 @@ export default function HostPage() {
     }
   };
 
+  // ============ Delivery Fee ============
+  const handleSaveDeliveryFee = async () => {
+    const fee = parseFloat(newDeliveryFee);
+    if (isNaN(fee) || fee < 0) return alert('Enter a valid delivery fee');
+    try {
+      await updateDeliveryFee(sessionId, fee);
+      setEditingDeliveryFee(false);
+      loadSession();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  // ============ Participant Order Management ============
+  const handleDeleteOrder = async (name) => {
+    if (!window.confirm(`Delete ${name}'s entire order?`)) return;
+    try {
+      await deleteParticipantOrder(sessionId, name);
+      loadSession();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  const startEditOrder = (participant) => {
+    setEditingOrderName(participant.name);
+    setEditingItems(participant.items.map(i => ({ ...i })));
+  };
+
+  const cancelEditOrder = () => {
+    setEditingOrderName(null);
+    setEditingItems([]);
+  };
+
+  const toggleItemUnavailable = (index) => {
+    const updated = [...editingItems];
+    updated[index] = { ...updated[index], unavailable: !updated[index].unavailable };
+    setEditingItems(updated);
+  };
+
+  const updateEditItem = (index, field, value) => {
+    const updated = [...editingItems];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditingItems(updated);
+  };
+
+  const removeEditItem = (index) => {
+    setEditingItems(editingItems.filter((_, i) => i !== index));
+  };
+
+  const handleSaveEditOrder = async () => {
+    try {
+      await editParticipantOrder(sessionId, editingOrderName, editingItems);
+      setEditingOrderName(null);
+      setEditingItems([]);
+      loadSession();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  // ============ Host's Own Order ============
   const updateMyItem = (index, field, value) => {
     const updated = [...myItems];
     updated[index] = { ...updated[index], [field]: value };
@@ -194,7 +262,25 @@ export default function HostPage() {
         </div>
         <div className="info-item">
           <span className="label">Delivery Fee</span>
-          <span className="value">{session.deliveryFee} EGP</span>
+          {editingDeliveryFee ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                className="form-input"
+                type="number"
+                value={newDeliveryFee}
+                onChange={e => setNewDeliveryFee(e.target.value)}
+                style={{ width: 80, padding: '4px 8px', fontSize: '0.85rem' }}
+                autoFocus
+                onKeyDown={e => e.key === 'Enter' && handleSaveDeliveryFee()}
+              />
+              <button onClick={handleSaveDeliveryFee} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>✅</button>
+              <button onClick={() => setEditingDeliveryFee(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>❌</button>
+            </div>
+          ) : (
+            <span className="value" style={{ cursor: 'pointer' }} onClick={() => { setNewDeliveryFee(String(session.deliveryFee)); setEditingDeliveryFee(true); }}>
+              {session.deliveryFee} EGP ✏️
+            </span>
+          )}
         </div>
         <div className="info-item">
           <span className="label">Participants</span>
@@ -430,19 +516,57 @@ export default function HostPage() {
         costs.map((participant, idx) => (
           <div key={idx} className="order-card">
             <div className="order-header">
-              <h3>{participant.name}</h3>
-              <span className={`payment-badge ${participant.paymentSent ? 'paid' : 'pending'}`}>
-                {participant.paymentSent ? '✓ Paid' : 'Pending'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <h3>{participant.name}</h3>
+                <span className={`payment-badge ${participant.paymentSent ? 'paid' : 'pending'}`}>
+                  {participant.paymentSent ? '✓ Paid' : 'Pending'}
+                </span>
+              </div>
+              <div className="btn-group">
+                {editingOrderName !== participant.name && (
+                  <>
+                    <button className="btn btn-secondary" onClick={() => startEditOrder(participant)} style={{ padding: '5px 10px', fontSize: '0.78rem' }}>✏️ Edit</button>
+                    <button className="btn btn-danger" onClick={() => handleDeleteOrder(participant.name)} style={{ padding: '5px 10px', fontSize: '0.78rem' }}>🗑️</button>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="order-items">
-              {participant.items.map((item, i) => (
-                <div key={i} className="order-item-row">
-                  <span>{item.name} × {item.quantity}</span>
-                  <span>{(item.price * item.quantity).toFixed(2)} EGP</span>
+
+            {/* Editing Mode */}
+            {editingOrderName === participant.name ? (
+              <div style={{ padding: '12px 0' }}>
+                {editingItems.map((item, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 60px 36px 36px', gap: 6, marginBottom: 6, alignItems: 'center', opacity: item.unavailable ? 0.4 : 1 }}>
+                    <input className="form-input" value={item.name} onChange={e => updateEditItem(i, 'name', e.target.value)} style={{ padding: '6px 10px', fontSize: '0.82rem' }} />
+                    <input className="form-input" type="number" value={item.price} onChange={e => updateEditItem(i, 'price', Number(e.target.value))} style={{ padding: '6px 10px', fontSize: '0.82rem' }} />
+                    <input className="form-input" type="number" value={item.quantity} onChange={e => updateEditItem(i, 'quantity', parseInt(e.target.value) || 1)} style={{ padding: '6px 10px', fontSize: '0.82rem' }} min="1" />
+                    <button onClick={() => toggleItemUnavailable(i)} title={item.unavailable ? 'Mark available' : 'Mark unavailable'}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem' }}>
+                      {item.unavailable ? '🚫' : '✅'}
+                    </button>
+                    <button onClick={() => removeEditItem(i)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+                  </div>
+                ))}
+                <div className="btn-group" style={{ marginTop: 10 }}>
+                  <button className="btn btn-success" onClick={handleSaveEditOrder} style={{ padding: '6px 14px', fontSize: '0.82rem' }}>💾 Save</button>
+                  <button className="btn btn-secondary" onClick={cancelEditOrder} style={{ padding: '6px 14px', fontSize: '0.82rem' }}>Cancel</button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              /* View Mode */
+              <div className="order-items">
+                {participant.items.map((item, i) => (
+                  <div key={i} className="order-item-row" style={{ opacity: item.unavailable ? 0.4 : 1, textDecoration: item.unavailable ? 'line-through' : 'none' }}>
+                    <span>
+                      {item.name} × {item.quantity}
+                      {item.unavailable && <span style={{ marginLeft: 8, color: 'var(--danger)', fontSize: '0.75rem', fontWeight: 600 }}>UNAVAILABLE</span>}
+                    </span>
+                    <span>{item.unavailable ? '—' : `${(item.price * item.quantity).toFixed(2)} EGP`}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="order-total">
               <div className="breakdown">
                 Items: {participant.itemsTotal.toFixed(2)} EGP<br />
