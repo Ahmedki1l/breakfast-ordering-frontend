@@ -154,6 +154,16 @@ export async function extractMenu(restaurantId, imageFilename) {
   return res.json();
 }
 
+export async function fetchGoogleMenu(restaurantId, placeId) {
+  const res = await fetch(`${API_URL}/admin/restaurants/${restaurantId}/fetch-google-menu`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ placeId })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
 export async function extractMenuFromUrls(restaurantId, photoUrls) {
   const res = await fetch(`${API_URL}/admin/restaurants/${restaurantId}/extract-menu-from-urls`, {
     method: 'POST',
@@ -175,18 +185,18 @@ export async function extractMenuFromPhotos(restaurantId, images) {
 }
 
 /**
- * Try URL approach first (server downloads photos with Referer header).
+ * Try server-side photo download + Gemini first.
  * If that fails, download photos in the browser and send as base64.
  */
 export async function autoExtractMenu(restaurantId, photoUrls) {
-  // Try server-side download first
+  // 1. Try server-side photo download
   try {
     return await extractMenuFromUrls(restaurantId, photoUrls);
   } catch (err) {
     console.log('Server download failed, trying browser download:', err.message);
   }
 
-  // Fallback: download in browser, send base64
+  // 2. Fallback: download in browser, send base64
   const images = [];
   for (const url of photoUrls.slice(0, 5)) {
     try {
@@ -202,11 +212,11 @@ export async function autoExtractMenu(restaurantId, photoUrls) {
     } catch { /* skip failed downloads */ }
   }
 
-  if (images.length === 0) {
-    throw new Error('Could not download any photos');
+  if (images.length > 0) {
+    return await extractMenuFromPhotos(restaurantId, images);
   }
 
-  return await extractMenuFromPhotos(restaurantId, images);
+  throw new Error('No menu data found');
 }
 
 export async function saveMenuItems(restaurantId, items) {

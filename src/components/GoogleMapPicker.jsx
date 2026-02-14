@@ -91,6 +91,7 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
 
       onPlaceSelect?.({
         name,
+        placeId,
         address: place.formattedAddress || '',
         phone: place.nationalPhoneNumber || place.internationalPhoneNumber || '',
         googleMapsUrl: place.googleMapsURI || `https://www.google.com/maps/place/?q=place_id:${placeId}`,

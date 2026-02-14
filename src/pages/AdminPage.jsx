@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   listAdminRestaurants, createRestaurant, updateRestaurant, deleteRestaurant,
-  uploadMenuImage, extractMenu, autoExtractMenu, saveMenuItems, deleteMenuImage
+  uploadMenuImage, extractMenu, saveMenuItems, deleteMenuImage
 } from '../api';
 import LoadingOverlay from '../components/LoadingOverlay';
 import GoogleMapPicker from '../components/GoogleMapPicker';
@@ -19,7 +19,6 @@ export default function AdminPage() {
   const [menuItems, setMenuItems] = useState([]);
   const [extracting, setExtracting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [pendingPhotoUrls, setPendingPhotoUrls] = useState([]);
   const [autoExtractMsg, setAutoExtractMsg] = useState('');
 
   const load = useCallback(async () => {
@@ -48,33 +47,6 @@ export default function AdminPage() {
       setSelectedId(restaurant.id);
       setMenuItems(restaurant.menuItems || []);
       setView('menu');
-
-      // Auto-extract menu from Google Maps photos if available
-      if (pendingPhotoUrls.length > 0) {
-        setAutoExtractMsg('🔍 Scanning Google Maps photos for menu...');
-        setExtracting(true);
-        try {
-          const result = await autoExtractMenu(restaurant.id, pendingPhotoUrls);
-          if (result.items && result.items.length > 0) {
-            setMenuItems(result.items);
-            if (result.source === 'menu') {
-              setAutoExtractMsg(`✅ Found ${result.items.length} menu items from Google Maps photos!`);
-            } else if (result.source === 'photos') {
-              setAutoExtractMsg(`📸 Identified ${result.items.length} dishes from photos (no prices found — add manually)`);
-            } else {
-              setAutoExtractMsg(`✅ Extracted ${result.items.length} items`);
-            }
-          } else {
-            setAutoExtractMsg('📷 No menu found in Google Maps photos. Upload a menu image or add items manually.');
-          }
-        } catch (err) {
-          console.error('Auto extract error:', err);
-          setAutoExtractMsg('⚠️ Could not extract menu from photos. Upload a menu image or add items manually.');
-        } finally {
-          setExtracting(false);
-          setPendingPhotoUrls([]);
-        }
-      }
     } catch (err) {
       alert('Error: ' + err.message);
     }
@@ -125,9 +97,7 @@ export default function AdminPage() {
 
   // ============ Menu Image & Extraction ============
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadFile = async (file) => {
     setUploading(true);
     try {
       const result = await uploadMenuImage(selectedId, file);
@@ -136,7 +106,28 @@ export default function AdminPage() {
       alert('Upload error: ' + err.message);
     } finally {
       setUploading(false);
-      e.target.value = '';
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadFile(file);
+    e.target.value = '';
+  };
+
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          await uploadFile(file);
+        }
+        return;
+      }
     }
   };
 
@@ -276,10 +267,6 @@ export default function AdminPage() {
                 googleMapsUrl: place.googleMapsUrl,
                 phone: place.phone,
               });
-              // Store photo URLs for auto-extraction after creation
-              if (place.photoUrls && place.photoUrls.length > 0) {
-                setPendingPhotoUrls(place.photoUrls);
-              }
             }}
           />
 
@@ -352,7 +339,7 @@ export default function AdminPage() {
           )}
 
           {/* Menu Images */}
-          <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card" style={{ marginBottom: 20 }} onPaste={handlePaste}>
             <h3 style={{ marginBottom: 12 }}>📸 Menu Images</h3>
 
             {(selected.menuImages || []).length > 0 && (
@@ -381,6 +368,28 @@ export default function AdminPage() {
                 ))}
               </div>
             )}
+
+            {/* Paste zone */}
+            <div
+              tabIndex={0}
+              onPaste={handlePaste}
+              style={{
+                border: '2px dashed var(--border)',
+                borderRadius: 10,
+                padding: '24px 16px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '0.9rem',
+                marginBottom: 12,
+                cursor: 'pointer',
+                transition: 'border-color 0.2s',
+                outline: 'none',
+              }}
+              onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
+              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+            >
+              {uploading ? '⏳ Uploading pasted image...' : '📋 Click here and Ctrl+V to paste a menu image'}
+            </div>
 
             <label className="btn btn-secondary btn-block" style={{ cursor: 'pointer' }}>
               {uploading ? '⏳ Uploading...' : '📤 Upload Menu Image'}
