@@ -1,0 +1,227 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { createSession, listRestaurants } from '../api';
+import LoadingOverlay from '../components/LoadingOverlay';
+
+export default function HomePage() {
+  const navigate = useNavigate();
+  const [showForm, setShowForm] = useState(false);
+  const [showCreated, setShowCreated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [sessionUrl, setSessionUrl] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [restaurants, setRestaurants] = useState([]);
+
+  const [form, setForm] = useState({
+    hostName: '',
+    hostPaymentInfo: '',
+    deliveryFee: '',
+    deadline: '',
+    restaurantId: ''
+  });
+
+  useEffect(() => {
+    listRestaurants().then(setRestaurants).catch(() => {});
+  }, []);
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.hostName || !form.hostPaymentInfo || !form.deliveryFee) {
+      alert('Please fill all required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await createSession({
+        hostName: form.hostName,
+        hostPaymentInfo: form.hostPaymentInfo,
+        deliveryFee: form.deliveryFee,
+        deadline: form.deadline || null,
+        restaurantId: form.restaurantId || null
+      });
+      setSessionId(data.sessionId);
+      const fullUrl = `${window.location.origin}/join/${data.sessionId}`;
+      setSessionUrl(fullUrl);
+      setShowForm(false);
+      setShowCreated(true);
+    } catch (err) {
+      alert('Error creating session: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(sessionUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const shareWhatsApp = () => {
+    const text = encodeURIComponent(`🍳 Join our breakfast order! ${sessionUrl}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  if (loading) return <LoadingOverlay message="Creating session..." />;
+
+  return (
+    <div className="container">
+      {/* Landing */}
+      {!showForm && !showCreated && (
+        <div className="card-glass" style={{ textAlign: 'center' }}>
+          <h1>
+            🍳 <span className="gradient-text">Breakfast Ordering</span>
+          </h1>
+          <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: '1.1rem' }}>
+            Simplify group breakfast orders with automatic cost splitting
+          </p>
+
+          <div className="features-grid">
+            <div className="card feature-card">
+              <span className="feature-icon">🔗</span>
+              <h3>Share Link</h3>
+              <p>Create session & share with team</p>
+            </div>
+            <div className="card feature-card">
+              <span className="feature-icon">💰</span>
+              <h3>Auto Calculate</h3>
+              <p>Costs split automatically</p>
+            </div>
+            <div className="card feature-card">
+              <span className="feature-icon">💳</span>
+              <h3>Easy Payment</h3>
+              <p>InstaPay info displayed</p>
+            </div>
+          </div>
+
+          <button className="btn btn-primary btn-block" onClick={() => setShowForm(true)}>
+            Create Order Session
+          </button>
+
+          <button
+            className="btn btn-secondary btn-block"
+            onClick={() => navigate('/admin')}
+            style={{ marginTop: 10, opacity: 0.7 }}
+          >
+            ⚙️ Admin Panel
+          </button>
+        </div>
+      )}
+
+      {/* Create Form */}
+      {showForm && (
+        <div className="card-glass">
+          <h2 style={{ marginBottom: 24 }}>Create Order Session</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="hostName">Your Name</label>
+              <input
+                id="hostName"
+                name="hostName"
+                className="form-input"
+                placeholder="Sarah"
+                value={form.hostName}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="hostPaymentInfo">Payment Info (InstaPay / Phone)</label>
+              <input
+                id="hostPaymentInfo"
+                name="hostPaymentInfo"
+                className="form-input"
+                placeholder="01XXXXXXXXX"
+                value={form.hostPaymentInfo}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="deliveryFee">Delivery Fee (EGP)</label>
+              <input
+                id="deliveryFee"
+                name="deliveryFee"
+                type="number"
+                className="form-input"
+                placeholder="30"
+                min="0"
+                step="0.01"
+                value={form.deliveryFee}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+            {/* Restaurant Selector */}
+            {restaurants.length > 0 && (
+              <div className="form-group">
+                <label htmlFor="restaurantId">Restaurant (optional)</label>
+                <select
+                  id="restaurantId"
+                  name="restaurantId"
+                  className="form-input"
+                  value={form.restaurantId}
+                  onChange={handleChange}
+                >
+                  <option value="">— No restaurant (manual items) —</option>
+                  {restaurants.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.menuItemCount} items)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label htmlFor="deadline">Order Deadline (optional)</label>
+              <input
+                id="deadline"
+                name="deadline"
+                type="datetime-local"
+                className="form-input"
+                value={form.deadline}
+                onChange={handleChange}
+              />
+            </div>
+            <div className="btn-group">
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                Create Session
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Session Created */}
+      {showCreated && (
+        <div className="card-glass">
+          <h2 style={{ color: 'var(--success)', marginBottom: 16 }}>✅ Session Created!</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 8 }}>Share this link with your team:</p>
+          <div className="session-url-box">{sessionUrl}</div>
+          <div className="btn-group" style={{ marginTop: 16 }}>
+            <button className="btn btn-secondary" onClick={copyUrl}>
+              {copied ? '✓ Copied!' : '📋 Copy Link'}
+            </button>
+            <button className="btn btn-whatsapp" onClick={shareWhatsApp}>
+              💬 Share WhatsApp
+            </button>
+            <button className="btn btn-primary" onClick={() => navigate(`/host/${sessionId}`)}>
+              View Dashboard →
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
