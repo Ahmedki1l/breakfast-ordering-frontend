@@ -164,6 +164,51 @@ export async function extractMenuFromUrls(restaurantId, photoUrls) {
   return res.json();
 }
 
+export async function extractMenuFromPhotos(restaurantId, images) {
+  const res = await fetch(`${API_URL}/admin/restaurants/${restaurantId}/extract-menu-from-photos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ images })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
+/**
+ * Try URL approach first (server downloads photos with Referer header).
+ * If that fails, download photos in the browser and send as base64.
+ */
+export async function autoExtractMenu(restaurantId, photoUrls) {
+  // Try server-side download first
+  try {
+    return await extractMenuFromUrls(restaurantId, photoUrls);
+  } catch (err) {
+    console.log('Server download failed, trying browser download:', err.message);
+  }
+
+  // Fallback: download in browser, send base64
+  const images = [];
+  for (const url of photoUrls.slice(0, 5)) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const blob = await resp.blob();
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.readAsDataURL(blob);
+      });
+      images.push({ data: base64, mimeType: blob.type || 'image/jpeg' });
+    } catch { /* skip failed downloads */ }
+  }
+
+  if (images.length === 0) {
+    throw new Error('Could not download any photos');
+  }
+
+  return await extractMenuFromPhotos(restaurantId, images);
+}
+
 export async function saveMenuItems(restaurantId, items) {
   const res = await fetch(`${API_URL}/admin/restaurants/${restaurantId}/menu-items`, {
     method: 'PUT',

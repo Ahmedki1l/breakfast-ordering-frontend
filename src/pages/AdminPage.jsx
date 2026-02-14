@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   listAdminRestaurants, createRestaurant, updateRestaurant, deleteRestaurant,
-  uploadMenuImage, extractMenu, extractMenuFromUrls, saveMenuItems, deleteMenuImage
+  uploadMenuImage, extractMenu, autoExtractMenu, saveMenuItems, deleteMenuImage
 } from '../api';
 import LoadingOverlay from '../components/LoadingOverlay';
 import GoogleMapPicker from '../components/GoogleMapPicker';
@@ -54,7 +54,7 @@ export default function AdminPage() {
         setAutoExtractMsg('🔍 Scanning Google Maps photos for menu...');
         setExtracting(true);
         try {
-          const result = await extractMenuFromUrls(restaurant.id, pendingPhotoUrls);
+          const result = await autoExtractMenu(restaurant.id, pendingPhotoUrls);
           if (result.items && result.items.length > 0) {
             setMenuItems(result.items);
             if (result.source === 'menu') {
