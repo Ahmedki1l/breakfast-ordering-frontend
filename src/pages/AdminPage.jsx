@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   listAdminRestaurants, createRestaurant, updateRestaurant, deleteRestaurant,
-  uploadMenuImage, extractMenu, saveMenuItems, deleteMenuImage
+  uploadMenuImage, extractMenu, extractMenuFromUrls, saveMenuItems, deleteMenuImage
 } from '../api';
 import LoadingOverlay from '../components/LoadingOverlay';
 import GoogleMapPicker from '../components/GoogleMapPicker';
@@ -19,6 +19,8 @@ export default function AdminPage() {
   const [menuItems, setMenuItems] = useState([]);
   const [extracting, setExtracting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pendingPhotoUrls, setPendingPhotoUrls] = useState([]);
+  const [autoExtractMsg, setAutoExtractMsg] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -44,7 +46,35 @@ export default function AdminPage() {
       setRestaurants(prev => [...prev, restaurant]);
       setForm({ name: '', address: '', googleMapsUrl: '', phone: '' });
       setSelectedId(restaurant.id);
+      setMenuItems(restaurant.menuItems || []);
       setView('menu');
+
+      // Auto-extract menu from Google Maps photos if available
+      if (pendingPhotoUrls.length > 0) {
+        setAutoExtractMsg('🔍 Scanning Google Maps photos for menu...');
+        setExtracting(true);
+        try {
+          const result = await extractMenuFromUrls(restaurant.id, pendingPhotoUrls);
+          if (result.items && result.items.length > 0) {
+            setMenuItems(result.items);
+            if (result.source === 'menu') {
+              setAutoExtractMsg(`✅ Found ${result.items.length} menu items from Google Maps photos!`);
+            } else if (result.source === 'photos') {
+              setAutoExtractMsg(`📸 Identified ${result.items.length} dishes from photos (no prices found — add manually)`);
+            } else {
+              setAutoExtractMsg(`✅ Extracted ${result.items.length} items`);
+            }
+          } else {
+            setAutoExtractMsg('📷 No menu found in Google Maps photos. Upload a menu image or add items manually.');
+          }
+        } catch (err) {
+          console.error('Auto extract error:', err);
+          setAutoExtractMsg('⚠️ Could not extract menu from photos. Upload a menu image or add items manually.');
+        } finally {
+          setExtracting(false);
+          setPendingPhotoUrls([]);
+        }
+      }
     } catch (err) {
       alert('Error: ' + err.message);
     }
@@ -246,6 +276,10 @@ export default function AdminPage() {
                 googleMapsUrl: place.googleMapsUrl,
                 phone: place.phone,
               });
+              // Store photo URLs for auto-extraction after creation
+              if (place.photoUrls && place.photoUrls.length > 0) {
+                setPendingPhotoUrls(place.photoUrls);
+              }
             }}
           />
 
@@ -289,6 +323,33 @@ export default function AdminPage() {
             </div>
             <button className="btn btn-secondary" onClick={() => { setView('list'); setSelectedId(null); }}>← Back</button>
           </div>
+
+          {/* Auto-extract status */}
+          {autoExtractMsg && (
+            <div style={{
+              padding: '12px 16px',
+              background: autoExtractMsg.startsWith('✅') ? 'rgba(34,197,94,0.1)' :
+                          autoExtractMsg.startsWith('⚠') ? 'rgba(239,68,68,0.1)' :
+                          'rgba(99,102,241,0.1)',
+              border: `1px solid ${autoExtractMsg.startsWith('✅') ? 'rgba(34,197,94,0.25)' :
+                                   autoExtractMsg.startsWith('⚠') ? 'rgba(239,68,68,0.25)' :
+                                   'rgba(99,102,241,0.25)'}`,
+              borderRadius: 10,
+              marginBottom: 16,
+              fontSize: '0.9rem',
+              color: 'var(--text)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              {extracting && <span className="spinner" style={{ width: 16, height: 16 }} />}
+              {autoExtractMsg}
+              <button onClick={() => setAutoExtractMsg('')} style={{
+                marginLeft: 'auto', background: 'none', border: 'none',
+                color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem'
+              }}>×</button>
+            </div>
+          )}
 
           {/* Menu Images */}
           <div className="card" style={{ marginBottom: 20 }}>

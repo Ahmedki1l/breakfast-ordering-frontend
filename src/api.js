@@ -154,6 +154,16 @@ export async function extractMenu(restaurantId, imageFilename) {
   return res.json();
 }
 
+export async function extractMenuFromUrls(restaurantId, photoUrls) {
+  const res = await fetch(`${API_URL}/admin/restaurants/${restaurantId}/extract-menu-from-urls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ photoUrls })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
 export async function saveMenuItems(restaurantId, items) {
   const res = await fetch(`${API_URL}/admin/restaurants/${restaurantId}/menu-items`, {
     method: 'PUT',

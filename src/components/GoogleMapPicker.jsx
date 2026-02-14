@@ -61,7 +61,7 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
       const place = new libs.Place({ id: placeId });
       await place.fetchFields({
         fields: ['displayName', 'formattedAddress', 'nationalPhoneNumber',
-          'internationalPhoneNumber', 'location', 'googleMapsURI']
+          'internationalPhoneNumber', 'location', 'googleMapsURI', 'photos']
       });
 
       if (!place.location) return;
@@ -80,11 +80,21 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
       setSuggestions([]);
       setShowDropdown(false);
 
+      // Get photo URLs (up to 5 photos for menu extraction)
+      const photoUrls = (place.photos || []).slice(0, 10).map(photo => {
+        try {
+          return photo.getURI({ maxWidth: 1200 });
+        } catch {
+          return null;
+        }
+      }).filter(Boolean);
+
       onPlaceSelect?.({
         name,
         address: place.formattedAddress || '',
         phone: place.nationalPhoneNumber || place.internationalPhoneNumber || '',
         googleMapsUrl: place.googleMapsURI || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
+        photoUrls,
       });
     } catch (err) {
       console.error('Place details error:', err);
