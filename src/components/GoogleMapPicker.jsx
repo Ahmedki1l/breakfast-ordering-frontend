@@ -81,9 +81,9 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
       setShowDropdown(false);
 
       // Get photo URLs (up to 5 photos for menu extraction)
-      const photoUrls = (place.photos || []).slice(0, 10).map(photo => {
+      const photoUrls = (place.photos || []).slice(0, 5).map(photo => {
         try {
-          return photo.getURI({ maxWidth: 1200 });
+          return photo.getURI({ maxWidth: 800 });
         } catch {
           return null;
         }
