@@ -1,4 +1,6 @@
-const API_URL = '/api';
+const API_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
 
 export async function createSession({ hostName, hostPaymentInfo, deliveryFee, deadline, restaurantId }) {
   const res = await fetch(`${API_URL}/sessions`, {

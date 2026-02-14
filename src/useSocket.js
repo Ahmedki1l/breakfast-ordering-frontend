@@ -7,7 +7,8 @@ export function useSocket(sessionId, { onUpdate, onClosed } = {}) {
   const connect = useCallback(() => {
     if (!sessionId || socketRef.current) return;
 
-    const socket = io(window.location.origin, {
+    const serverUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    const socket = io(serverUrl, {
       transports: ['websocket', 'polling']
     });
 
