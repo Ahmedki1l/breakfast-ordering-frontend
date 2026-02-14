@@ -11,7 +11,7 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 let mapsLoadingPromise = null;
 
 function loadGoogleMapsCore() {
-  if (window.google?.maps?.importLibrary) return Promise.resolve();
+  if (window.google?.maps?.places) return Promise.resolve();
   if (mapsLoadingPromise) return mapsLoadingPromise;
 
   mapsLoadingPromise = new Promise((resolve, reject) => {
@@ -20,9 +20,13 @@ function loadGoogleMapsCore() {
       return;
     }
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=__gmapsInit`;
     script.async = true;
-    script.onload = () => resolve();
+    script.defer = true;
+    window.__gmapsInit = () => {
+      delete window.__gmapsInit;
+      resolve();
+    };
     script.onerror = () => reject(new Error('Failed to load Google Maps'));
     document.head.appendChild(script);
   });
@@ -159,21 +163,19 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
 
     let cancelled = false;
 
-    loadGoogleMapsCore().then(async () => {
+    loadGoogleMapsCore().then(() => {
       if (cancelled || !mapRef.current) return;
 
-      // Import libraries using the NEW API
-      const [mapsLib, placesLib] = await Promise.all([
-        google.maps.importLibrary('maps'),
-        google.maps.importLibrary('places'),
-      ]);
+      // Access classes directly (loaded via libraries=places)
+      const PlaceClass = google.maps.places.Place;
+      const AutocompleteSuggestionClass = google.maps.places.AutocompleteSuggestion;
 
       libsRef.current = {
-        Place: placesLib.Place,
-        AutocompleteSuggestion: placesLib.AutocompleteSuggestion,
+        Place: PlaceClass,
+        AutocompleteSuggestion: AutocompleteSuggestionClass,
       };
 
-      const gMap = new mapsLib.Map(mapRef.current, {
+      const gMap = new google.maps.Map(mapRef.current, {
         center,
         zoom: 14,
         styles: darkMapStyle,
