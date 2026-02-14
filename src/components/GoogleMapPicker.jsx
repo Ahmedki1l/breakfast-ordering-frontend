@@ -1,20 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 /**
- * GoogleMapPicker — Interactive Google Map with Places Autocomplete.
- * Restricted to restaurants & cafes only.
- * When a place is selected (via search or map click), calls onPlaceSelect with:
- * { name, address, phone, googleMapsUrl, lat, lng }
- *
- * Requires VITE_GOOGLE_MAPS_API_KEY in .env
+ * GoogleMapPicker — uses the NEW Places API (not legacy).
+ * Custom autocomplete with restaurant/cafe filtering.
+ * Auto-fills form on search selection or POI map click.
  */
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 let mapsLoadingPromise = null;
 
-function loadGoogleMaps() {
-  if (window.google?.maps?.places) return Promise.resolve();
+function loadGoogleMapsCore() {
+  if (window.google?.maps?.importLibrary) return Promise.resolve();
   if (mapsLoadingPromise) return mapsLoadingPromise;
 
   mapsLoadingPromise = new Promise((resolve, reject) => {
@@ -23,13 +20,9 @@ function loadGoogleMaps() {
       return;
     }
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=__gmapsInit`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&loading=async`;
     script.async = true;
-    script.defer = true;
-    window.__gmapsInit = () => {
-      delete window.__gmapsInit;
-      resolve();
-    };
+    script.onload = () => resolve();
     script.onerror = () => reject(new Error('Failed to load Google Maps'));
     document.head.appendChild(script);
   });
@@ -39,67 +32,125 @@ function loadGoogleMaps() {
 
 export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
   const mapRef = useRef(null);
-  const inputRef = useRef(null);
   const mapObjRef = useRef(null);
   const markerRef = useRef(null);
-  const serviceRef = useRef(null);
+  const libsRef = useRef(null); // { Place, AutocompleteSuggestion, ... }
+  const debounceRef = useRef(null);
+
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [selectedName, setSelectedName] = useState('');
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
-  // Default to Cairo, Egypt
   const center = defaultCenter || { lat: 30.0444, lng: 31.2357 };
 
-  // Extract place details and notify parent
-  const handlePlaceDetails = (place) => {
-    if (!place || !place.geometry?.location) return;
+  // ============ Select a place by ID ============
+  const selectPlaceById = useCallback(async (placeId) => {
+    const libs = libsRef.current;
+    if (!libs) return;
 
-    const gMap = mapObjRef.current;
-    const gMarker = markerRef.current;
+    setLoadingDetails(true);
+    try {
+      const place = new libs.Place({ id: placeId });
+      await place.fetchFields({
+        fields: ['displayName', 'formattedAddress', 'nationalPhoneNumber',
+          'internationalPhoneNumber', 'location', 'googleMapsURI']
+      });
 
-    // Center map and show marker
-    gMap.setCenter(place.geometry.location);
-    gMap.setZoom(17);
-    gMarker.setPosition(place.geometry.location);
-    gMarker.setVisible(true);
+      if (!place.location) return;
 
-    const name = place.name || '';
-    setSelectedName(name);
-    if (inputRef.current) inputRef.current.value = name;
+      const gMap = mapObjRef.current;
+      const gMarker = markerRef.current;
 
-    // Notify parent with all extracted data
-    onPlaceSelect?.({
-      name,
-      address: place.formatted_address || place.vicinity || '',
-      phone: place.formatted_phone_number || place.international_phone_number || '',
-      googleMapsUrl: place.url || `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-      lat: place.geometry.location.lat(),
-      lng: place.geometry.location.lng(),
-    });
-  };
+      gMap.setCenter(place.location);
+      gMap.setZoom(17);
+      gMarker.setPosition(place.location);
+      gMarker.setVisible(true);
 
-  // Get full details for a place ID
-  const getPlaceDetails = (placeId) => {
-    const service = serviceRef.current;
-    if (!service) return;
+      const name = place.displayName || '';
+      setSelectedName(name);
+      setQuery(name);
+      setSuggestions([]);
+      setShowDropdown(false);
 
-    service.getDetails(
-      {
-        placeId,
-        fields: [
-          'name', 'formatted_address', 'formatted_phone_number',
-          'international_phone_number', 'geometry', 'place_id',
-          'url', 'types', 'vicinity'
-        ]
-      },
-      (place, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
-          handlePlaceDetails(place);
-        }
+      onPlaceSelect?.({
+        name,
+        address: place.formattedAddress || '',
+        phone: place.nationalPhoneNumber || place.internationalPhoneNumber || '',
+        googleMapsUrl: place.googleMapsURI || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
+      });
+    } catch (err) {
+      console.error('Place details error:', err);
+    } finally {
+      setLoadingDetails(false);
+    }
+  }, [onPlaceSelect]);
+
+  // ============ Search Suggestions ============
+  const fetchSuggestions = useCallback(async (input) => {
+    const libs = libsRef.current;
+    if (!libs || !input.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    try {
+      const request = {
+        input: input.trim(),
+        includedPrimaryTypes: ['restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery'],
+        language: 'en',
+      };
+
+      // Add location bias if map is available
+      const gMap = mapObjRef.current;
+      if (gMap) {
+        const mapCenter = gMap.getCenter();
+        request.locationBias = {
+          center: { lat: mapCenter.lat(), lng: mapCenter.lng() },
+          radius: 10000,
+        };
       }
-    );
+
+      const result = await libs.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+
+      const items = (result.suggestions || []).map(s => ({
+        placeId: s.placePrediction.placeId,
+        mainText: s.placePrediction.mainText?.text || '',
+        secondaryText: s.placePrediction.secondaryText?.text || '',
+        fullText: s.placePrediction.text?.text || '',
+      }));
+
+      setSuggestions(items);
+      setShowDropdown(items.length > 0);
+    } catch (err) {
+      console.error('Autocomplete error:', err);
+      setSuggestions([]);
+    }
+  }, []);
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    setSelectedName('');
+
+    // Debounce
+    clearTimeout(debounceRef.current);
+    if (!val.trim()) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
   };
 
+  const handleSuggestionClick = (suggestion) => {
+    selectPlaceById(suggestion.placeId);
+  };
+
+  // ============ Init Map ============
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) {
       setError('Add VITE_GOOGLE_MAPS_API_KEY to frontend/.env');
@@ -108,10 +159,21 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
 
     let cancelled = false;
 
-    loadGoogleMaps().then(() => {
+    loadGoogleMapsCore().then(async () => {
       if (cancelled || !mapRef.current) return;
 
-      const gMap = new window.google.maps.Map(mapRef.current, {
+      // Import libraries using the NEW API
+      const [mapsLib, placesLib] = await Promise.all([
+        google.maps.importLibrary('maps'),
+        google.maps.importLibrary('places'),
+      ]);
+
+      libsRef.current = {
+        Place: placesLib.Place,
+        AutocompleteSuggestion: placesLib.AutocompleteSuggestion,
+      };
+
+      const gMap = new mapsLib.Map(mapRef.current, {
         center,
         zoom: 14,
         styles: darkMapStyle,
@@ -120,57 +182,31 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
-        clickableIcons: true, // Keep POI icons visible
+        clickableIcons: true,
       });
 
-      const gMarker = new window.google.maps.Marker({
+      const gMarker = new google.maps.Marker({
         map: gMap,
         visible: false,
-        animation: window.google.maps.Animation.DROP,
+        animation: google.maps.Animation.DROP,
       });
-
-      const placesService = new window.google.maps.places.PlacesService(gMap);
 
       mapObjRef.current = gMap;
       markerRef.current = gMarker;
-      serviceRef.current = placesService;
 
-      // === Search Autocomplete (restaurants & cafes only) ===
-      const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-        types: ['establishment'],
-        fields: [
-          'name', 'formatted_address', 'formatted_phone_number',
-          'international_phone_number', 'geometry', 'place_id',
-          'url', 'types', 'vicinity'
-        ],
-      });
-
-      autocomplete.bindTo('bounds', gMap);
-
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        handlePlaceDetails(place);
-      });
-
-      // === Click on a POI (restaurant icon on the map) ===
-      // When clicking a POI, the event has a placeId property
+      // Handle POI clicks on the map
       gMap.addListener('click', (e) => {
         if (e.placeId) {
-          // Prevent default Google Maps info window
-          e.stop();
-          // Get full details for this place
-          getPlaceDetails(e.placeId);
+          e.stop(); // Prevent default info window
+          selectPlaceById(e.placeId);
         }
       });
 
       // Try to center on user's location
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            gMap.setCenter(userLoc);
-          },
-          () => {} // Silently fail
+          (pos) => gMap.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          () => {}
         );
       }
 
@@ -182,6 +218,7 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
     return () => { cancelled = true; };
   }, []);
 
+  // ============ Render ============
   if (error) {
     return (
       <div style={{
@@ -204,12 +241,65 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
       <label style={{ display: 'block', marginBottom: 6, fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-muted)' }}>
         🗺️ Search for a restaurant or cafe
       </label>
-      <input
-        ref={inputRef}
-        className="form-input"
-        placeholder="Type a restaurant name..."
-        style={{ marginBottom: 12 }}
-      />
+
+      {/* Custom Autocomplete */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <input
+          className="form-input"
+          placeholder="Type a restaurant name..."
+          value={query}
+          onChange={handleInputChange}
+          onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+          onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+        />
+        {loadingDetails && (
+          <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontSize: '0.9rem' }}>⏳</span>
+        )}
+
+        {/* Suggestions Dropdown */}
+        {showDropdown && suggestions.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            background: '#1e293b',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 8,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            zIndex: 1000,
+            maxHeight: 260,
+            overflowY: 'auto',
+            marginTop: 4,
+          }}>
+            {suggestions.map((s, i) => (
+              <div
+                key={s.placeId || i}
+                onClick={() => handleSuggestionClick(s)}
+                style={{
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                  transition: 'background 150ms ease',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.15)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '0.9rem' }}>
+                  🍽️ {s.mainText}
+                </div>
+                {s.secondaryText && (
+                  <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: 2 }}>
+                    {s.secondaryText}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Map */}
       <div
         ref={mapRef}
         style={{
@@ -221,6 +311,8 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
           background: 'var(--bg-card)',
         }}
       />
+
+      {/* Selection Confirmation */}
       {selectedName && (
         <div style={{
           marginTop: 10,
@@ -234,16 +326,21 @@ export default function GoogleMapPicker({ onPlaceSelect, defaultCenter }) {
           ✅ Selected: <strong>{selectedName}</strong> — fields auto-filled below
         </div>
       )}
+
       {!ready && !error && (
         <p style={{ textAlign: 'center', color: 'var(--text-dim)', marginTop: 8, fontSize: '0.85rem' }}>
           Loading map...
         </p>
       )}
+
+      <p style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginTop: 8, textAlign: 'center' }}>
+        💡 Type to search, or click any restaurant icon on the map
+      </p>
     </div>
   );
 }
 
-// Dark-themed map style to match the UI
+// Dark map style — hides non-food POIs
 const darkMapStyle = [
   { elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#8b8ba7' }] },
@@ -251,7 +348,6 @@ const darkMapStyle = [
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#6366f1' }] },
   { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1a2a1e' }] },
-  // Hide non-food POIs to reduce clutter
   { featureType: 'poi.attraction', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.government', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.medical', stylers: [{ visibility: 'off' }] },
