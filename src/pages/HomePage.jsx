@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createSession, listRestaurants } from '../api';
+import { createSession, listRestaurants, getActiveFeed } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { useToast } from '../components/Toast';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [showCreated, setShowCreated] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -14,6 +16,7 @@ export default function HomePage() {
   const [sessionId, setSessionId] = useState('');
   const [copied, setCopied] = useState(false);
   const [restaurants, setRestaurants] = useState([]);
+  const [activeSessions, setActiveSessions] = useState([]);
 
   const [form, setForm] = useState({
     hostPaymentInfo: '',
@@ -31,6 +34,7 @@ export default function HomePage() {
 
   useEffect(() => {
     listRestaurants().then(setRestaurants).catch(() => {});
+    getActiveFeed().then(setActiveSessions).catch(() => {});
   }, []);
 
   const handleChange = (e) => {
@@ -40,7 +44,7 @@ export default function HomePage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.hostPaymentInfo || !form.deliveryFee) {
-      alert('Please fill all required fields');
+      toast.warning('Please fill all required fields');
       return;
     }
 
@@ -58,7 +62,7 @@ export default function HomePage() {
       setShowForm(false);
       setShowCreated(true);
     } catch (err) {
-      alert('Error creating session: ' + err.message);
+      toast.error('Error creating session: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -118,6 +122,48 @@ export default function HomePage() {
           >
             ⚙️ Admin Panel
           </button>
+
+          <button
+            className="btn btn-secondary btn-block"
+            onClick={() => navigate('/history')}
+            style={{ marginTop: 6, opacity: 0.7 }}
+          >
+            📜 Order History
+          </button>
+
+          {/* Active Sessions Feed */}
+          {activeSessions.length > 0 && (
+            <div style={{ marginTop: 24, textAlign: 'left' }}>
+              <h3 style={{ marginBottom: 12, color: 'var(--text)', fontSize: '1rem' }}>📡 Active Sessions</h3>
+              {activeSessions.map(s => (
+                <div
+                  key={s.sessionId}
+                  className="card"
+                  style={{
+                    padding: '14px 18px',
+                    marginBottom: 8,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onClick={() => navigate(s.isHost ? `/host/${s.sessionId}` : `/join/${s.sessionId}`)}
+                >
+                  <div>
+                    <span style={{ fontWeight: 600 }}>{s.hostName}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginLeft: 8 }}>
+                      {s.isHost ? '(Host)' : ''}
+                    </span>
+                    <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginTop: 2 }}>
+                      👥 {s.participantCount} participants
+                    </div>
+                  </div>
+                  <span style={{ color: 'var(--primary-light)', fontSize: '0.85rem', fontWeight: 500 }}>→</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

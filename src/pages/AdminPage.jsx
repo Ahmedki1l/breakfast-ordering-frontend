@@ -5,8 +5,10 @@ import {
 } from '../api';
 import LoadingOverlay from '../components/LoadingOverlay';
 import GoogleMapPicker from '../components/GoogleMapPicker';
+import { useToast } from '../components/Toast';
 
 export default function AdminPage() {
+  const toast = useToast();
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
@@ -39,7 +41,7 @@ export default function AdminPage() {
   // ============ Restaurant CRUD ============
 
   const handleCreateRestaurant = async () => {
-    if (!form.name.trim()) return alert('Name is required');
+    if (!form.name.trim()) return toast.warning('Name is required');
     try {
       const restaurant = await createRestaurant(form);
       setRestaurants(prev => [...prev, restaurant]);
@@ -48,18 +50,18 @@ export default function AdminPage() {
       setMenuItems(restaurant.menuItems || []);
       setView('menu');
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
   const handleUpdateRestaurant = async () => {
-    if (!form.name.trim()) return alert('Name is required');
+    if (!form.name.trim()) return toast.warning('Name is required');
     try {
       const updated = await updateRestaurant(selectedId, form);
       setRestaurants(prev => prev.map(r => r.id === selectedId ? updated : r));
       setView('menu');
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
@@ -73,7 +75,7 @@ export default function AdminPage() {
         setView('list');
       }
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
@@ -103,7 +105,7 @@ export default function AdminPage() {
       const result = await uploadMenuImage(selectedId, file);
       setRestaurants(prev => prev.map(r => r.id === selectedId ? result.restaurant : r));
     } catch (err) {
-      alert('Upload error: ' + err.message);
+      toast.error('Upload error: ' + err.message);
     } finally {
       setUploading(false);
     }
@@ -137,9 +139,9 @@ export default function AdminPage() {
       const result = await extractMenu(selectedId, filename);
       // Merge extracted items with existing
       setMenuItems(prev => [...prev, ...result.items]);
-      alert(`✅ Extracted ${result.items.length} items!`);
+      toast.success(`Extracted ${result.items.length} items!`);
     } catch (err) {
-      alert('Extraction error: ' + err.message);
+      toast.error('Extraction error: ' + err.message);
     } finally {
       setExtracting(false);
     }
@@ -153,7 +155,7 @@ export default function AdminPage() {
         return { ...r, menuImages: r.menuImages.filter(f => f !== filename) };
       }));
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
@@ -197,9 +199,9 @@ export default function AdminPage() {
     try {
       const result = await saveMenuItems(selectedId, menuItems);
       setRestaurants(prev => prev.map(r => r.id === selectedId ? result : r));
-      alert('✅ Menu saved!');
+      toast.success('Menu saved!');
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 

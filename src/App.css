@@ -48,6 +48,39 @@
   --transition-slow: 400ms ease;
 }
 
+/* ============ Light Theme ============ */
+[data-theme="light"] {
+  --bg: #f8fafc;
+  --bg-card: rgba(0, 0, 0, 0.03);
+  --bg-card-hover: rgba(0, 0, 0, 0.06);
+  --bg-glass: rgba(255, 255, 255, 0.8);
+  --bg-input: rgba(0, 0, 0, 0.04);
+  --border: rgba(0, 0, 0, 0.1);
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.08);
+}
+
+[data-theme="light"] body {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+[data-theme="light"] .card-glass {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .gradient-text {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #06b6d4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
 /* ============ Reset ============ */
 *,
 *::before,
@@ -697,6 +730,16 @@ select.form-input option {
   background: var(--bg-card-hover);
 }
 
+.menu-item-card--single:hover {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.12);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+}
+
+.menu-item-card--single:active {
+  transform: scale(0.98);
+}
+
 .menu-item-name {
   font-size: 0.92rem;
   font-weight: 500;
@@ -810,3 +853,144 @@ select.form-input option {
   color: #818cf8;
   font-weight: 700;
 }
+
+/* ============ Toast Notifications ============ */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  cursor: pointer;
+  animation: toast-slide-in 0.3s ease-out;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow-md);
+  border: 1px solid;
+}
+
+.toast--success {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+.toast--error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.toast--info {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+}
+
+.toast--warning {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
+.toast-icon {
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  flex: 1;
+  font-weight: 500;
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ============ Skeleton Loading ============ */
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============ Enhanced Mobile ============ */
+@media (max-width: 480px) {
+  .container {
+    padding: 12px 10px;
+  }
+
+  .card-glass {
+    padding: 16px;
+    border-radius: var(--radius-md);
+  }
+
+  .toast-container {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+
+  .menu-item-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .menu-item-variants {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .summary-card {
+    padding: 16px;
+  }
+
+  .payment-number {
+    font-size: 1.2rem;
+  }
+
+  .info-item {
+    padding: 10px;
+  }
+
+  .info-item .value {
+    font-size: 0.95rem;
+  }
+}
+
+

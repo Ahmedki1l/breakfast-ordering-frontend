@@ -1,10 +1,13 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { ToastProvider } from './components/Toast';
 import HomePage from './pages/HomePage';
 import HostPage from './pages/HostPage';
 import JoinPage from './pages/JoinPage';
 import AdminPage from './pages/AdminPage';
+import HistoryPage from './pages/HistoryPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import OTPPage from './pages/OTPPage';
@@ -25,6 +28,7 @@ function GuestRoute({ children }) {
 
 function NavBar() {
   const { user, logout, isAuthenticated } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   if (!isAuthenticated) return null;
 
   return (
@@ -43,7 +47,22 @@ function NavBar() {
       <a href="/" style={{ textDecoration: 'none', color: 'var(--text)', fontWeight: 700, fontSize: '1.05rem' }}>
         🍳 Breakfast
       </a>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button
+          onClick={toggleTheme}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '1.1rem',
+            padding: '4px 6px',
+            borderRadius: 6,
+            transition: 'background 0.2s',
+          }}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
         <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
           👤 {user?.name}
         </span>
@@ -79,6 +98,7 @@ function AppRoutes() {
         <Route path="/verify" element={<OTPPage />} />
         <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+        <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
         <Route path="/host/:sessionId" element={<ProtectedRoute><HostPage /></ProtectedRoute>} />
         <Route path="/join/:sessionId" element={<ProtectedRoute><JoinPage /></ProtectedRoute>} />
       </Routes>
@@ -90,9 +110,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <div className="app-wrapper">
-          <AppRoutes />
-        </div>
+        <ThemeProvider>
+          <ToastProvider>
+            <div className="app-wrapper">
+              <AppRoutes />
+            </div>
+          </ToastProvider>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

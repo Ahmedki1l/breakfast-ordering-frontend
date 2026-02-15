@@ -129,6 +129,30 @@ export async function editParticipantOrder(sessionId, participantName, items) {
   return res.json();
 }
 
+export async function updateSessionRestaurant(sessionId, restaurantId) {
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/restaurant`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restaurantId: restaurantId || null })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
+// ============ Feed & History ============
+
+export async function getActiveFeed() {
+  const res = await authFetch(`${API_URL}/sessions/feed/active`);
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
+export async function getMyHistory() {
+  const res = await authFetch(`${API_URL}/sessions/history/mine`);
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+  return res.json();
+}
+
 // ============ Restaurant API ============
 
 export async function listRestaurants() {

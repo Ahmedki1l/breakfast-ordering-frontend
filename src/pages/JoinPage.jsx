@@ -5,12 +5,15 @@ import { useSocket } from '../useSocket';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingOverlay from '../components/LoadingOverlay';
 import CountdownTimer from '../components/CountdownTimer';
+import { useToast } from '../components/Toast';
+import { SessionSkeleton } from '../components/Skeleton';
 
 const emptyItem = () => ({ name: '', price: '', quantity: 1 });
 
 export default function JoinPage() {
   const { sessionId } = useParams();
   const { user } = useAuth();
+  const toast = useToast();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -46,9 +49,9 @@ export default function JoinPage() {
   }, []);
 
   const handleClosed = useCallback(() => {
-    alert('Session has been closed by the host');
-    window.location.href = '/';
-  }, []);
+    toast.warning('Session has been closed by the host');
+    setTimeout(() => { window.location.href = '/'; }, 1500);
+  }, [toast]);
 
   useSocket(sessionId, { onUpdate: handleUpdate, onClosed: handleClosed });
 
@@ -144,7 +147,7 @@ export default function JoinPage() {
       }));
 
     if (validItems.length === 0) {
-      alert('Please add at least one item');
+      toast.warning('Please add at least one item');
       return;
     }
 
@@ -153,7 +156,7 @@ export default function JoinPage() {
       await submitOrder(sessionId, { items: validItems });
       setSubmitted(true);
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     } finally {
       setSubmitting(false);
     }
@@ -166,18 +169,18 @@ export default function JoinPage() {
   const handleMarkPaid = async () => {
     try {
       await updatePayment(sessionId, participantName, true);
-      alert('✅ Marked as paid! Thank you!');
+      toast.success('Marked as paid! Thank you!');
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
   const copyPaymentInfo = () => {
     navigator.clipboard.writeText(session.hostPaymentInfo);
-    alert('Payment info copied!');
+    toast.success('Payment info copied!');
   };
 
-  if (loading) return <LoadingOverlay message="Loading session..." />;
+  if (loading) return <SessionSkeleton />;
   if (submitting) return <LoadingOverlay message="Submitting order..." />;
   if (error) return (
     <div className="container">
@@ -268,23 +271,37 @@ export default function JoinPage() {
                       <h4 style={{ color: 'var(--primary-light)', fontSize: '0.9rem', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
                         {category}
                       </h4>
-                      {catItems.map(menuItem => (
-                        <div key={menuItem.id} className="menu-item-card">
-                          <span className="menu-item-name">{menuItem.name}</span>
-                          <div className="menu-item-variants">
-                            {menuItem.variants.map((v, vi) => (
-                              <button
-                                key={vi}
-                                className="btn menu-variant-btn"
-                                onClick={() => addFromMenu(menuItem, v)}
-                              >
-                                {v.label !== 'default' && <span className="variant-label">{v.label}</span>}
-                                <span className="variant-price">{v.price} EGP</span>
-                              </button>
-                            ))}
+                      {catItems.map(menuItem => {
+                        const isSingleVariant = menuItem.variants.length === 1;
+                        return (
+                          <div
+                            key={menuItem.id}
+                            className={`menu-item-card${isSingleVariant ? ' menu-item-card--single' : ''}`}
+                            onClick={isSingleVariant ? () => addFromMenu(menuItem, menuItem.variants[0]) : undefined}
+                            style={isSingleVariant ? { cursor: 'pointer' } : {}}
+                          >
+                            <span className="menu-item-name">{menuItem.name}</span>
+                            {isSingleVariant ? (
+                              <span className="variant-price" style={{ fontWeight: 600, color: 'var(--primary-light)' }}>
+                                {menuItem.variants[0].price} EGP
+                              </span>
+                            ) : (
+                              <div className="menu-item-variants">
+                                {menuItem.variants.map((v, vi) => (
+                                  <button
+                                    key={vi}
+                                    className="btn menu-variant-btn"
+                                    onClick={() => addFromMenu(menuItem, v)}
+                                  >
+                                    {v.label !== 'default' && <span className="variant-label">{v.label}</span>}
+                                    <span className="variant-price">{v.price} EGP</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ))}
                 </div>
@@ -321,7 +338,6 @@ export default function JoinPage() {
                     <button
                       className="item-remove-btn"
                       onClick={() => removeItem(index)}
-                      style={items.length <= 1 ? { visibility: 'hidden' } : {}}
                     >
                       ×
                     </button>
@@ -356,10 +372,23 @@ export default function JoinPage() {
           </>
         )}
 
-        {/* Order Submitted */}
+        {/* Order Submitted — Confirmation Receipt */}
         {submitted && (
           <>
-            <h2 style={{ color: 'var(--success)', marginBottom: 16 }}>✅ Order Submitted!</h2>
+            <div style={{
+              textAlign: 'center',
+              padding: '24px 0 16px',
+              borderBottom: '1px dashed var(--border)',
+              marginBottom: 20,
+            }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>✅</div>
+              <h2 style={{ color: 'var(--success)', marginBottom: 4 }}>Order Confirmed!</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                {' · '}
+                {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
 
             <div className="summary-card">
               <h3 style={{ marginBottom: 12 }}>Your Order</h3>

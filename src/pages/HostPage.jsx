@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { getSession, closeSession as apiCloseSession, submitOrder, updateDeliveryFee, deleteParticipantOrder, editParticipantOrder } from '../api';
+import { getSession, closeSession as apiCloseSession, submitOrder, updateDeliveryFee, deleteParticipantOrder, editParticipantOrder, updateSessionRestaurant, listRestaurants } from '../api';
 import { useSocket } from '../useSocket';
 import LoadingOverlay from '../components/LoadingOverlay';
 import CountdownTimer from '../components/CountdownTimer';
+import { useToast } from '../components/Toast';
+import { SessionSkeleton } from '../components/Skeleton';
 
 export default function HostPage() {
   const { sessionId } = useParams();
+  const toast = useToast();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,6 +24,10 @@ export default function HostPage() {
   // Participant order editing
   const [editingOrderName, setEditingOrderName] = useState(null);
   const [editingItems, setEditingItems] = useState([]);
+  // Restaurant editing
+  const [editingRestaurant, setEditingRestaurant] = useState(false);
+  const [allRestaurants, setAllRestaurants] = useState([]);
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState('');
 
   const loadSession = useCallback(async () => {
     try {
@@ -43,8 +50,8 @@ export default function HostPage() {
   }, [loadSession]);
 
   const handleClosed = useCallback(() => {
-    alert('Session has been closed');
-  }, []);
+    toast.info('Session has been closed');
+  }, [toast]);
 
   useSocket(sessionId, { onUpdate: handleUpdate, onClosed: handleClosed });
 
@@ -93,12 +100,12 @@ export default function HostPage() {
       .map(item => `${item.name} × ${item.quantity}`)
       .join('\n');
     navigator.clipboard.writeText(text);
-    alert('Combined order copied!');
+    toast.success('Combined order copied!');
   };
 
   const exportCSV = () => {
     if (!session?.costs?.length) {
-      alert('No orders to export');
+      toast.warning('No orders to export');
       return;
     }
 
@@ -128,23 +135,23 @@ export default function HostPage() {
     if (!window.confirm('Are you sure? No more orders can be added.')) return;
     try {
       await apiCloseSession(sessionId);
-      alert('Session closed!');
+      toast.success('Session closed!');
       loadSession();
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
   // ============ Delivery Fee ============
   const handleSaveDeliveryFee = async () => {
     const fee = parseFloat(newDeliveryFee);
-    if (isNaN(fee) || fee < 0) return alert('Enter a valid delivery fee');
+    if (isNaN(fee) || fee < 0) return toast.warning('Enter a valid delivery fee');
     try {
       await updateDeliveryFee(sessionId, fee);
       setEditingDeliveryFee(false);
       loadSession();
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
@@ -155,7 +162,7 @@ export default function HostPage() {
       await deleteParticipantOrder(sessionId, name);
       loadSession();
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
@@ -192,7 +199,7 @@ export default function HostPage() {
       setEditingItems([]);
       loadSession();
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     }
   };
 
@@ -206,7 +213,10 @@ export default function HostPage() {
   const addMyItem = () => setMyItems([...myItems, { name: '', price: '', quantity: 1 }]);
 
   const removeMyItem = (index) => {
-    if (myItems.length <= 1) return;
+    if (myItems.length <= 1) {
+      setMyItems([{ name: '', price: '', quantity: 1 }]);
+      return;
+    }
     setMyItems(myItems.filter((_, i) => i !== index));
   };
 
@@ -218,7 +228,7 @@ export default function HostPage() {
     }));
     const invalid = validItems.some(i => !i.name || !i.price || i.price <= 0);
     if (invalid) {
-      alert('Please fill all item details with valid prices');
+      toast.warning('Please fill all item details with valid prices');
       return;
     }
     setSubmittingOrder(true);
@@ -228,13 +238,13 @@ export default function HostPage() {
       setMyItems([{ name: '', price: '', quantity: 1 }]);
       loadSession();
     } catch (err) {
-      alert('Error: ' + err.message);
+      toast.error(err.message);
     } finally {
       setSubmittingOrder(false);
     }
   };
 
-  if (loading) return <LoadingOverlay message="Loading dashboard..." />;
+  if (loading) return <SessionSkeleton />;
   if (error) return (
     <div className="container">
       <div className="card-glass" style={{ textAlign: 'center' }}>
@@ -291,6 +301,74 @@ export default function HostPage() {
           <div className="info-item">
             <span className="label">Time Left</span>
             <CountdownTimer deadline={session.deadline} />
+          </div>
+        )}
+      </div>
+
+      {/* Restaurant Section */}
+      <div style={{
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '16px 20px',
+        marginBottom: 20,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '1.1rem' }}>🍽️</span>
+          <span style={{ fontWeight: 600, color: 'var(--text)' }}>
+            {session.restaurant ? session.restaurant.name : 'No restaurant selected'}
+          </span>
+        </div>
+        {session.status === 'active' && !editingRestaurant && (
+          <button
+            className="btn btn-secondary"
+            style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+            onClick={async () => {
+              setEditingRestaurant(true);
+              setSelectedRestaurantId(session.restaurantId || '');
+              if (allRestaurants.length === 0) {
+                try {
+                  const list = await listRestaurants();
+                  setAllRestaurants(list);
+                } catch (e) { console.error(e); }
+              }
+            }}
+          >
+            ✏️ Change
+          </button>
+        )}
+        {editingRestaurant && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              className="form-input"
+              style={{ width: 'auto', minWidth: 180, padding: '6px 10px', fontSize: '0.85rem' }}
+              value={selectedRestaurantId}
+              onChange={e => setSelectedRestaurantId(e.target.value)}
+            >
+              <option value="">— No restaurant —</option>
+              {allRestaurants.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            <button
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+              onClick={async () => {
+                try {
+                  await updateSessionRestaurant(sessionId, selectedRestaurantId || null);
+                  await loadSession();
+                  setEditingRestaurant(false);
+                } catch (e) { toast.error(e.message); }
+              }}
+            >✅</button>
+            <button
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+              onClick={() => setEditingRestaurant(false)}
+            >❌</button>
           </div>
         )}
       </div>
@@ -441,7 +519,7 @@ export default function HostPage() {
                     <button
                       className="item-remove-btn"
                       onClick={() => removeMyItem(index)}
-                      style={myItems.length <= 1 ? { visibility: 'hidden' } : {}}
+                      style={{}}
                     >
                       ×
                     </button>
