@@ -2,19 +2,22 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { getSession, submitOrder, updatePayment } from '../api';
 import { useSocket } from '../useSocket';
+import { useAuth } from '../contexts/AuthContext';
 import LoadingOverlay from '../components/LoadingOverlay';
+import CountdownTimer from '../components/CountdownTimer';
 
 const emptyItem = () => ({ name: '', price: '', quantity: 1 });
 
 export default function JoinPage() {
   const { sessionId } = useParams();
+  const { user } = useAuth();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
 
-  const [participantName, setParticipantName] = useState('');
+  const participantName = user?.name || '';
   const [items, setItems] = useState([emptyItem()]);
   const [participantCount, setParticipantCount] = useState(0);
   const [menuSearch, setMenuSearch] = useState('');
@@ -60,8 +63,15 @@ export default function JoinPage() {
   const deliveryShare = participantCount > 0 ? deliveryFee / participantCount : deliveryFee;
   const grandTotal = itemsTotal + deliveryShare;
 
-  // Deadline check
-  const deadlinePassed = session?.deadline && new Date() > new Date(session.deadline);
+  // Deadline check (reactive via state)
+  const [deadlinePassed, setDeadlinePassed] = useState(false);
+  useEffect(() => {
+    if (!session?.deadline) return;
+    const check = () => setDeadlinePassed(new Date() > new Date(session.deadline));
+    check();
+    const interval = setInterval(check, 1000);
+    return () => clearInterval(interval);
+  }, [session?.deadline]);
 
   // Restaurant menu
   const restaurant = session?.restaurant;
@@ -124,10 +134,6 @@ export default function JoinPage() {
   };
 
   const handleSubmit = async () => {
-    if (!participantName.trim()) {
-      alert('Please enter your name');
-      return;
-    }
 
     const validItems = items
       .filter(item => item.name.trim() && parseFloat(item.price) > 0)
@@ -144,7 +150,7 @@ export default function JoinPage() {
 
     setSubmitting(true);
     try {
-      await submitOrder(sessionId, { participantName: participantName.trim(), items: validItems });
+      await submitOrder(sessionId, { items: validItems });
       setSubmitted(true);
     } catch (err) {
       alert('Error: ' + err.message);
@@ -159,7 +165,7 @@ export default function JoinPage() {
 
   const handleMarkPaid = async () => {
     try {
-      await updatePayment(sessionId, participantName.trim(), true);
+      await updatePayment(sessionId, participantName, true);
       alert('✅ Marked as paid! Thank you!');
     } catch (err) {
       alert('Error: ' + err.message);
@@ -205,10 +211,11 @@ export default function JoinPage() {
           )}
           {session.deadline && (
             <div className="info-item" style={{ flex: 1, minWidth: 120 }}>
-              <span className="label">Deadline</span>
-              <span className="value" style={{ color: deadlinePassed ? 'var(--danger)' : 'var(--text)' }}>
-                {new Date(session.deadline).toLocaleString()}
-              </span>
+              <span className="label">Time Left</span>
+              <CountdownTimer
+                deadline={session.deadline}
+                onExpired={() => setDeadlinePassed(true)}
+              />
             </div>
           )}
         </div>
@@ -216,8 +223,8 @@ export default function JoinPage() {
         {/* Deadline expired */}
         {deadlinePassed && (
           <div className="deadline-expired">
-            <h2>⏰ Deadline Passed</h2>
-            <p>The order deadline was {new Date(session.deadline).toLocaleString()}</p>
+            <h2>⏰ Time's Up!</h2>
+            <p>The ordering window has closed</p>
           </div>
         )}
 
@@ -232,16 +239,16 @@ export default function JoinPage() {
         {/* Order Form */}
         {!submitted && !deadlinePassed && session.status === 'active' && (
           <>
-            <div className="form-group">
-              <label htmlFor="participantName">Your Name</label>
-              <input
-                id="participantName"
-                className="form-input"
-                placeholder="Ahmed"
-                value={participantName}
-                onChange={(e) => setParticipantName(e.target.value)}
-                required
-              />
+            <div style={{
+              background: 'rgba(99,102,241,0.08)',
+              border: '1px solid rgba(99,102,241,0.2)',
+              borderRadius: 10,
+              padding: '10px 14px',
+              marginBottom: 16,
+              fontSize: '0.9rem',
+              color: 'var(--text)',
+            }}>
+              👤 Ordering as <strong>{participantName}</strong>
             </div>
 
             {/* Restaurant Menu Catalog */}

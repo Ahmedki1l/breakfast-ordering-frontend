@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createSession, listRestaurants } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import LoadingOverlay from '../components/LoadingOverlay';
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [showCreated, setShowCreated] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -14,12 +16,18 @@ export default function HomePage() {
   const [restaurants, setRestaurants] = useState([]);
 
   const [form, setForm] = useState({
-    hostName: '',
     hostPaymentInfo: '',
     deliveryFee: '',
-    deadline: '',
+    deadlineMinutes: '',
     restaurantId: ''
   });
+
+  // Pre-fill payment info from user profile
+  useEffect(() => {
+    if (user?.paymentInfo) {
+      setForm(prev => ({ ...prev, hostPaymentInfo: prev.hostPaymentInfo || user.paymentInfo }));
+    }
+  }, [user]);
 
   useEffect(() => {
     listRestaurants().then(setRestaurants).catch(() => {});
@@ -31,7 +39,7 @@ export default function HomePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.hostName || !form.hostPaymentInfo || !form.deliveryFee) {
+    if (!form.hostPaymentInfo || !form.deliveryFee) {
       alert('Please fill all required fields');
       return;
     }
@@ -39,10 +47,9 @@ export default function HomePage() {
     setLoading(true);
     try {
       const data = await createSession({
-        hostName: form.hostName,
         hostPaymentInfo: form.hostPaymentInfo,
         deliveryFee: form.deliveryFee,
-        deadline: form.deadline || null,
+        deadlineMinutes: form.deadlineMinutes ? parseInt(form.deadlineMinutes) : null,
         restaurantId: form.restaurantId || null
       });
       setSessionId(data.sessionId);
@@ -119,17 +126,16 @@ export default function HomePage() {
         <div className="card-glass">
           <h2 style={{ marginBottom: 24 }}>Create Order Session</h2>
           <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="hostName">Your Name</label>
-              <input
-                id="hostName"
-                name="hostName"
-                className="form-input"
-                placeholder="Sarah"
-                value={form.hostName}
-                onChange={handleChange}
-                required
-              />
+            <div style={{
+              background: 'rgba(99,102,241,0.08)',
+              border: '1px solid rgba(99,102,241,0.2)',
+              borderRadius: 10,
+              padding: '10px 14px',
+              marginBottom: 16,
+              fontSize: '0.9rem',
+              color: 'var(--text)',
+            }}>
+              👤 Hosting as <strong>{user?.name}</strong>
             </div>
             <div className="form-group">
               <label htmlFor="hostPaymentInfo">Payment Info (InstaPay / Phone)</label>
@@ -181,15 +187,22 @@ export default function HomePage() {
             )}
 
             <div className="form-group">
-              <label htmlFor="deadline">Order Deadline (optional)</label>
+              <label htmlFor="deadlineMinutes">Order Deadline — minutes (optional)</label>
               <input
-                id="deadline"
-                name="deadline"
-                type="datetime-local"
+                id="deadlineMinutes"
+                name="deadlineMinutes"
+                type="number"
                 className="form-input"
-                value={form.deadline}
+                placeholder="e.g. 30"
+                min="1"
+                value={form.deadlineMinutes}
                 onChange={handleChange}
               />
+              {form.deadlineMinutes && (
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                  Orders will close in {form.deadlineMinutes} minute{form.deadlineMinutes !== '1' ? 's' : ''}
+                </small>
+              )}
             </div>
             <div className="btn-group">
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>

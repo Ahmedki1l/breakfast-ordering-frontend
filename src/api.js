@@ -2,11 +2,51 @@ const API_URL = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api';
 
-export async function createSession({ hostName, hostPaymentInfo, deliveryFee, deadline, restaurantId }) {
-  const res = await fetch(`${API_URL}/sessions`, {
+function getAuthHeaders() {
+  const token = localStorage.getItem('accessToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function authFetch(url, options = {}) {
+  const headers = {
+    ...options.headers,
+    ...getAuthHeaders(),
+  };
+
+  let res = await fetch(url, { ...options, headers });
+
+  // If token expired, try to refresh
+  if (res.status === 401) {
+    const body = await res.clone().json().catch(() => ({}));
+    if (body.code === 'TOKEN_EXPIRED') {
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          localStorage.setItem('accessToken', data.accessToken);
+          // Retry original request with new token
+          headers.Authorization = `Bearer ${data.accessToken}`;
+          res = await fetch(url, { ...options, headers });
+        }
+      }
+    }
+  }
+
+  return res;
+}
+
+// ============ Session API ============
+
+export async function createSession({ hostPaymentInfo, deliveryFee, deadlineMinutes, restaurantId }) {
+  const res = await authFetch(`${API_URL}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hostName, hostPaymentInfo, deliveryFee, deadline: deadline || null, restaurantId: restaurantId || null })
+    body: JSON.stringify({ hostPaymentInfo, deliveryFee, deadlineMinutes: deadlineMinutes || null, restaurantId: restaurantId || null })
   });
   if (!res.ok) {
     const err = await res.json();
@@ -24,11 +64,11 @@ export async function getSession(sessionId) {
   return res.json();
 }
 
-export async function submitOrder(sessionId, { participantName, items }) {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/orders`, {
+export async function submitOrder(sessionId, { items }) {
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/orders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ participantName, items })
+    body: JSON.stringify({ items })
   });
   if (!res.ok) {
     const err = await res.json();
@@ -38,7 +78,7 @@ export async function submitOrder(sessionId, { participantName, items }) {
 }
 
 export async function updatePayment(sessionId, participantName, paymentSent) {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}/payment`, {
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}/payment`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paymentSent })
@@ -51,7 +91,7 @@ export async function updatePayment(sessionId, participantName, paymentSent) {
 }
 
 export async function closeSession(sessionId) {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}`, { method: 'DELETE' });
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}`, { method: 'DELETE' });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to close session');
@@ -62,7 +102,7 @@ export async function closeSession(sessionId) {
 // ============ Host Management API ============
 
 export async function updateDeliveryFee(sessionId, deliveryFee) {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/delivery-fee`, {
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/delivery-fee`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deliveryFee })
@@ -72,7 +112,7 @@ export async function updateDeliveryFee(sessionId, deliveryFee) {
 }
 
 export async function deleteParticipantOrder(sessionId, participantName) {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}`, {
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}`, {
     method: 'DELETE'
   });
   if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
@@ -80,7 +120,7 @@ export async function deleteParticipantOrder(sessionId, participantName) {
 }
 
 export async function editParticipantOrder(sessionId, participantName, items) {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}`, {
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items })

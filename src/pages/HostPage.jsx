@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getSession, closeSession as apiCloseSession, submitOrder, updateDeliveryFee, deleteParticipantOrder, editParticipantOrder } from '../api';
 import { useSocket } from '../useSocket';
 import LoadingOverlay from '../components/LoadingOverlay';
+import CountdownTimer from '../components/CountdownTimer';
 
 export default function HostPage() {
   const { sessionId } = useParams();
@@ -222,7 +223,7 @@ export default function HostPage() {
     }
     setSubmittingOrder(true);
     try {
-      await submitOrder(sessionId, { participantName: session.hostName, items: validItems });
+      await submitOrder(sessionId, { items: validItems });
       setShowMyOrder(false);
       setMyItems([{ name: '', price: '', quantity: 1 }]);
       loadSession();
@@ -288,8 +289,8 @@ export default function HostPage() {
         </div>
         {session.deadline && (
           <div className="info-item">
-            <span className="label">Deadline</span>
-            <span className="value">{new Date(session.deadline).toLocaleString()}</span>
+            <span className="label">Time Left</span>
+            <CountdownTimer deadline={session.deadline} />
           </div>
         )}
       </div>
