@@ -234,6 +234,8 @@ export default function HostPage() {
     setSubmittingOrder(true);
     try {
       await submitOrder(sessionId, { items: validItems });
+      // Save for 'same as last order'
+      localStorage.setItem('breakfast_last_order', JSON.stringify(validItems));
       setShowMyOrder(false);
       setMyItems([{ name: '', price: '', quantity: 1 }]);
       loadSession();
@@ -425,6 +427,57 @@ export default function HostPage() {
             {showMyOrder && (
             <>
               <h3 style={{ marginBottom: 16 }}>🍽️ Your Order ({session.hostName})</h3>
+
+              {/* Same as last order button */}
+              {(() => {
+                try {
+                  const saved = JSON.parse(localStorage.getItem('breakfast_last_order') || 'null');
+                  if (saved && saved.length > 0 && myItems.length === 1 && !myItems[0].name) {
+                    return (
+                      <button
+                        className="btn btn-block"
+                        onClick={() => {
+                          setMyItems(saved.map(i => ({ name: i.name, price: String(i.price), quantity: i.quantity || 1 })));
+                          toast.success('Previous order loaded!');
+                        }}
+                        style={{
+                          marginBottom: 16,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'stretch',
+                          gap: 10,
+                          padding: '14px 16px',
+                          background: 'linear-gradient(135deg, rgba(99,102,241,0.10), rgba(6,182,212,0.06))',
+                          border: '1px dashed rgba(99,102,241,0.35)',
+                          borderRadius: 'var(--radius-md)',
+                          cursor: 'pointer',
+                          textAlign: 'start',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.92rem' }}>
+                          🔄 Same as last order
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {saved.map((item, i) => (
+                            <span key={i} style={{
+                              padding: '3px 10px',
+                              background: 'rgba(99,102,241,0.12)',
+                              border: '1px solid rgba(99,102,241,0.2)',
+                              borderRadius: 20,
+                              fontSize: '0.78rem',
+                              color: 'var(--text-dim)',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {item.name} {item.quantity > 1 ? `×${item.quantity}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+                    );
+                  }
+                } catch (_) {}
+                return null;
+              })()}
 
               {/* Host Menu Picker */}
               {session.restaurant?.menuItems?.length > 0 && (

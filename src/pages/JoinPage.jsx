@@ -24,6 +24,15 @@ export default function JoinPage() {
   const [items, setItems] = useState([emptyItem()]);
   const [participantCount, setParticipantCount] = useState(0);
   const [menuSearch, setMenuSearch] = useState('');
+  const [lastOrder, setLastOrder] = useState(null);
+
+  // Load last order from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('breakfast_last_order');
+      if (saved) setLastOrder(JSON.parse(saved));
+    } catch (_) {}
+  }, []);
 
   const loadSession = useCallback(async () => {
     try {
@@ -154,6 +163,8 @@ export default function JoinPage() {
     setSubmitting(true);
     try {
       await submitOrder(sessionId, { items: validItems });
+      // Save to localStorage for 'same as last order'
+      localStorage.setItem('breakfast_last_order', JSON.stringify(validItems));
       setSubmitted(true);
     } catch (err) {
       toast.error(err.message);
@@ -253,6 +264,49 @@ export default function JoinPage() {
             }}>
               👤 Ordering as <strong>{participantName}</strong>
             </div>
+
+            {/* Same as last order button */}
+            {lastOrder && lastOrder.length > 0 && items.length === 1 && !items[0].name && (
+              <button
+                className="btn btn-block"
+                onClick={() => {
+                  setItems(lastOrder.map(i => ({ name: i.name, price: String(i.price), quantity: i.quantity || 1 })));
+                  toast.success('Previous order loaded!');
+                }}
+                style={{
+                  marginBottom: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  gap: 10,
+                  padding: '14px 16px',
+                  background: 'linear-gradient(135deg, rgba(99,102,241,0.10), rgba(6,182,212,0.06))',
+                  border: '1px dashed rgba(99,102,241,0.35)',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  textAlign: 'start',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.92rem' }}>
+                  🔄 Same as last order
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {lastOrder.map((item, i) => (
+                    <span key={i} style={{
+                      padding: '3px 10px',
+                      background: 'rgba(99,102,241,0.12)',
+                      border: '1px solid rgba(99,102,241,0.2)',
+                      borderRadius: 20,
+                      fontSize: '0.78rem',
+                      color: 'var(--text-dim)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {item.name} {item.quantity > 1 ? `×${item.quantity}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            )}
 
             {/* Restaurant Menu Catalog */}
             {menuItems.length > 0 && (
