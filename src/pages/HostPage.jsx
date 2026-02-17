@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { getSession, closeSession as apiCloseSession, submitOrder, updateDeliveryFee, deleteParticipantOrder, editParticipantOrder, updateSessionRestaurant, listRestaurants } from '../api';
+import { getSession, closeSession as apiCloseSession, submitOrder, updateDeliveryFee, deleteParticipantOrder, editParticipantOrder, updateSessionRestaurant, listRestaurants, treatParticipants, confirmPayment } from '../api';
 import { useSocket } from '../useSocket';
 import LoadingOverlay from '../components/LoadingOverlay';
 import CountdownTimer from '../components/CountdownTimer';
@@ -635,8 +635,31 @@ export default function HostPage() {
       </div>
 
       {/* Individual Orders */}
-      <div className="section-header">
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <h2>📋 Orders <span className="badge">{costs.length}</span></h2>
+        {costs.length > 1 && (
+          <button
+            className="btn"
+            onClick={async () => {
+              try {
+                await treatParticipants(sessionId, 'all');
+                toast.success('🎁 عزمتكم! Treating everyone');
+              } catch (e) { toast.error(e.message); }
+            }}
+            style={{
+              padding: '6px 16px',
+              fontSize: '0.82rem',
+              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            🎁 عزمتكم (Treat All)
+          </button>
+        )}
       </div>
 
       {costs.length === 0 ? (
@@ -645,16 +668,26 @@ export default function HostPage() {
           <p>No orders yet. Share the link to start collecting!</p>
         </div>
       ) : (
-        costs.map((participant, idx) => (
+        costs.map((participant, idx) => {
+          const pmt = participant.payment || { status: participant.paymentSent ? 'paid' : 'pending' };
+          const statusConfig = {
+            pending:  { label: '🟡 Pending',   className: 'pending' },
+            paid:     { label: pmt.confirmedByHost ? '✅ Confirmed' : '💳 Paid', className: 'paid' },
+            cash:     { label: pmt.confirmedByHost ? '✅ Cash received' : '💵 Cash', className: 'paid' },
+            treated:  { label: `🎁 Treated by ${pmt.paidBy || 'host'}`, className: 'paid' },
+          };
+          const statusInfo = statusConfig[pmt.status] || statusConfig.pending;
+
+          return (
           <div key={idx} className="order-card">
             <div className="order-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h3>{participant.name}</h3>
-                <span className={`payment-badge ${participant.paymentSent ? 'paid' : 'pending'}`}>
-                  {participant.paymentSent ? '✓ Paid' : 'Pending'}
+                <span className={`payment-badge ${statusInfo.className}`}>
+                  {statusInfo.label}
                 </span>
               </div>
-              <div className="btn-group">
+              <div className="btn-group" style={{ flexWrap: 'wrap' }}>
                 {editingOrderName !== participant.name && (
                   <>
                     <button className="btn btn-secondary" onClick={() => startEditOrder(participant)} style={{ padding: '5px 10px', fontSize: '0.78rem' }}>✏️ Edit</button>
@@ -663,6 +696,66 @@ export default function HostPage() {
                 )}
               </div>
             </div>
+
+            {/* Payment Actions for Host */}
+            {pmt.status !== 'treated' && (
+              <div style={{
+                display: 'flex',
+                gap: 6,
+                flexWrap: 'wrap',
+                padding: '8px 0',
+                borderBottom: '1px solid var(--border)',
+                marginBottom: 8,
+              }}>
+                {/* Confirm Payment (when someone has paid/cash but host hasn't confirmed) */}
+                {(pmt.status === 'paid' || pmt.status === 'cash') && !pmt.confirmedByHost && (
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      try {
+                        await confirmPayment(sessionId, participant.name);
+                        toast.success(`✅ Payment confirmed for ${participant.name}`);
+                      } catch (e) { toast.error(e.message); }
+                    }}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '0.78rem',
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ✅ Confirm Received
+                  </button>
+                )}
+
+                {/* Treat this person */}
+                {pmt.status === 'pending' && (
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      try {
+                        await treatParticipants(sessionId, [participant.name]);
+                        toast.success(`🎁 عزمت ${participant.name}!`);
+                      } catch (e) { toast.error(e.message); }
+                    }}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '0.78rem',
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🎁 عزمتك (Treat)
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Editing Mode */}
             {editingOrderName === participant.name ? (
@@ -707,7 +800,8 @@ export default function HostPage() {
               <span className="total-amount">{participant.total.toFixed(2)} EGP</span>
             </div>
           </div>
-        ))
+          );
+        })
       )}
     </div>
   );

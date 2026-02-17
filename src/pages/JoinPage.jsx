@@ -177,14 +177,23 @@ export default function JoinPage() {
     setSubmitted(false);
   };
 
-  const handleMarkPaid = async () => {
-    try {
-      await updatePayment(sessionId, participantName, true);
-      toast.success('Marked as paid! Thank you!');
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
+  const handleMarkPaid = async (method = 'transfer', forName = null) => {
+  try {
+    const targetName = forName || participantName;
+    await updatePayment(sessionId, targetName, {
+      status: method === 'cash' ? 'cash' : 'paid',
+      method,
+      paidBy: participantName,
+    });
+    toast.success(forName
+      ? `Paid for ${forName}! 🎁`
+      : method === 'cash' ? 'Marked as cash payment! 💵' : 'Marked as paid! ✅'
+    );
+    loadSession();
+  } catch (err) {
+    toast.error(err.message);
+  }
+};
 
   const copyPaymentInfo = () => {
     navigator.clipboard.writeText(session.hostPaymentInfo);
@@ -461,14 +470,67 @@ export default function JoinPage() {
             <div className="payment-info-box">
               <h3>💳 Send Payment To</h3>
               <div className="payment-number">{session.hostPaymentInfo}</div>
-              <div className="btn-group" style={{ justifyContent: 'center' }}>
+              <div className="btn-group" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
                 <button className="btn btn-secondary" onClick={copyPaymentInfo}>
                   📋 Copy Number
                 </button>
-                <button className="btn btn-success" onClick={handleMarkPaid}>
-                  ✓ Mark as Paid
+                <button className="btn btn-success" onClick={() => handleMarkPaid('transfer')}>
+                  💳 Paid (Transfer)
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => handleMarkPaid('cash')}
+                  style={{
+                    padding: '10px 18px',
+                    background: 'linear-gradient(135deg, #10b981, #059669)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  💵 Paying Cash
                 </button>
               </div>
+
+              {/* Pay for others */}
+              {session.costs && session.costs.filter(c =>
+                c.name !== participantName && (!c.payment || c.payment.status === 'pending')
+              ).length > 0 && (
+                <div style={{
+                  marginTop: 16,
+                  paddingTop: 14,
+                  borderTop: '1px dashed var(--border)',
+                }}>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 10 }}>
+                    🎁 Pay for someone else:
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {session.costs
+                      .filter(c => c.name !== participantName && (!c.payment || c.payment.status === 'pending'))
+                      .map((c, i) => (
+                        <button
+                          key={i}
+                          className="btn"
+                          onClick={() => handleMarkPaid('transfer', c.name)}
+                          style={{
+                            padding: '6px 14px',
+                            fontSize: '0.78rem',
+                            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 'var(--radius-sm)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          🎁 {c.name} ({c.total.toFixed(0)} EGP)
+                        </button>
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
             </div>
 
             {!deadlinePassed && session.status === 'active' && (

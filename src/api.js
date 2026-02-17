@@ -77,15 +77,45 @@ export async function submitOrder(sessionId, { items }) {
   return res.json();
 }
 
-export async function updatePayment(sessionId, participantName, paymentSent) {
+export async function updatePayment(sessionId, participantName, paymentData) {
+  // Support both legacy boolean and new object format
+  const body = typeof paymentData === 'boolean'
+    ? { paymentSent: paymentData }
+    : paymentData; // { status, method, paidBy }
   const res = await authFetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}/payment`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ paymentSent })
+    body: JSON.stringify(body)
   });
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Failed to update payment');
+  }
+  return res.json();
+}
+
+export async function treatParticipants(sessionId, names) {
+  // names = 'all' or ['Ahmed', 'Sara']
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/treat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ names })
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to treat participants');
+  }
+  return res.json();
+}
+
+export async function confirmPayment(sessionId, participantName) {
+  const res = await authFetch(`${API_URL}/sessions/${sessionId}/orders/${encodeURIComponent(participantName)}/confirm`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to confirm payment');
   }
   return res.json();
 }
